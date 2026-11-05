@@ -28,7 +28,12 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      - id: pages
+        uses: actions/configure-pages@v5
+      # SITE_URL goes into the OpenGraph tags; the runner's Chrome redraws og.png.
       - run: bun run site:build
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

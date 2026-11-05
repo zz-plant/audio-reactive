@@ -4,6 +4,11 @@
  * browser ES modules under `_site/lib/`, then copies the static page from
  * `site/` on top. The worklet bundle must have no `import` statements left,
  * because `audioWorklet.addModule` does not follow them in every browser.
+ * Last, it redraws the link-preview card (`og.png`) from the code being
+ * deployed and writes the site's absolute URL into the OpenGraph tags, which
+ * chat apps need to fetch the card. The URL comes from SITE_URL (the Pages
+ * workflow passes the one GitHub reports), else from GITHUB_REPOSITORY as a
+ * project Pages URL.
  *
  *   bun run site:build
  *   bun run site:preview      # serve _site/ on http://localhost:8787
@@ -15,9 +20,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { OG_IMAGE_ALT, packageVersion, renderOgPng } from './render-og.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, '_site');
@@ -88,7 +95,36 @@ if (
 // 4. The static page.
 cpSync(join(ROOT, 'site'), OUT, { recursive: true });
 
+// 5. Link previews: redraw the card, then make the OpenGraph URLs absolute.
+function siteUrl(): string {
+  const explicit = process.env.SITE_URL?.trim();
+  if (explicit) return explicit.endsWith('/') ? explicit : `${explicit}/`;
+  const [owner, repo] = (process.env.GITHUB_REPOSITORY ?? '').split('/');
+  if (owner && repo) return `https://${owner.toLowerCase()}.github.io/${repo}/`;
+  return 'https://zz-plant.github.io/audio-reactive/';
+}
+
+if (renderOgPng(join(OUT, 'og.png'))) {
+  console.log('redrew og.png');
+} else {
+  console.warn('no headless Chrome found; shipping the committed og.png');
+}
+
+// Changing the query string whenever the card can change makes chat apps
+// that cache previews by URL fetch the new one.
+const ogVersion = process.env.GITHUB_SHA?.slice(0, 7) ?? packageVersion();
+const escapeAttr = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+const indexPath = join(OUT, 'index.html');
+writeFileSync(
+  indexPath,
+  readFileSync(indexPath, 'utf8')
+    .replaceAll('__SITE_URL__', siteUrl())
+    .replaceAll('__OG_VERSION__', ogVersion)
+    .replaceAll('__OG_IMAGE_ALT__', escapeAttr(OG_IMAGE_ALT)),
+);
+
 const kb = (path: string) => `${(statSync(path).size / 1024).toFixed(1)} kB`;
-console.log(`wrote ${OUT}`);
+console.log(`wrote ${OUT} for ${siteUrl()}`);
 console.log(`  lib/audio-reactive.js ${kb(mainOut)}`);
 console.log(`  lib/worklet.js        ${kb(workletOut)}`);
