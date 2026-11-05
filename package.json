@@ -49,6 +49,7 @@
     "test": "bun test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "bun run clean && bun run typecheck && bun run test && bun run build",
+    "og:png": "bun run scripts/render-og.ts",
     "site:build": "bun run scripts/build-site.ts",
     "site:preview": "bun run scripts/build-site.ts && bunx serve _site -l 8787"
   },
